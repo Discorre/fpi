@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:15
+    networks:
+      - network_fpi
+    environment:
+      POSTGRES_USER: discorre1
+      POSTGRES_PASSWORD: 0412
+      POSTGRES_DB: bank
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql 
+    # ports:
+    #   - "35432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U discorre2 -d bank"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  backend:
+    build: ./fpibank-system
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://discorre2:0412@db:5432/bank
+      SECRET_KEY: eb4ae8f8c330008117d25836b4b27ecd4fefdac5f1492d8101226350c667ff9b
+      ALGORITHM: HS256
+    ports:
+      - "8000:8000"
+    networks:
+      - network_fpi
+    
+  # frontend:
+  #   build: ./frontend
+  #   depends_on:
+  #     - backend
+  #   ports:
+  #     - "3000:3000"
+
+volumes:
+  db_data:
+
+networks:
+  network_fpi:
+    driver: bridge
