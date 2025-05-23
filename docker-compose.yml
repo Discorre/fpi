@@ -28,20 +28,39 @@ services:
       DATABASE_URL: postgresql+psycopg2://discorre2:0412@db:5432/bank
       SECRET_KEY: eb4ae8f8c330008117d25836b4b27ecd4fefdac5f1492d8101226350c667ff9b
       ALGORITHM: HS256
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     networks:
       - network_fpi
     
-  # frontend:
-  #   build: ./frontend
-  #   depends_on:
-  #     - backend
-  #   ports:
-  #     - "3000:3000"
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - network_fpi
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+  frontend:
+    build:
+      context: ./fpibank-client
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_BASE=http://localhost:8000
 
 volumes:
   db_data:
+  redis_data:
 
 networks:
   network_fpi:

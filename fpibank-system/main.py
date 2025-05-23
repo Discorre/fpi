@@ -8,11 +8,11 @@ from models import User, Log
 app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
-origins = ["http://localhost:5173"]
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

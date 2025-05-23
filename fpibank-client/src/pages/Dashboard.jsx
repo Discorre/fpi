@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Card, Descriptions, Table, Button } from 'antd'
 import { useAuth } from '../authContext'
 import { useNavigate } from 'react-router-dom'
+import api from '../api/api'
 
 const Dashboard = () => {
   const { user } = useAuth()
@@ -9,15 +10,20 @@ const Dashboard = () => {
   const [operations, setOperations] = useState([])
 
   useEffect(() => {
-    const fetchOps = async () => {
-      const res = await fetch('http://localhost:8000/operations', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      })
-      const data = await res.json()
-      setOperations(data.operations || [])
+  const fetchOps = async () => {
+    try {
+      const res = await api.get('http://localhost:8000/operations');
+      setOperations(res.data.operations || []);
+    } catch (error) {
+      console.error('Ошибка загрузки операций:', error);
+      setOperations([]);
     }
-    if (user) fetchOps()
-  }, [user])
+  };
+
+  if (user) {
+    fetchOps();
+  }
+}, [user]);
 
   const columns = [
     { title: 'Сумма', dataIndex: 'amount' },

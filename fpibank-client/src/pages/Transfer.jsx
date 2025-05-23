@@ -22,7 +22,8 @@ const Transfer = () => {
         alert('Перевод выполнен')
         navigate('/')
       } else {
-        alert(res.data || 'Ошибка перевода')
+      const data = await res.json();
+      alert(data.detail || 'Ошибка перевода');
       }
     } catch (e) {
       alert('Ошибка сети')

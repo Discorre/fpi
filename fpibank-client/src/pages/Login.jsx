@@ -13,7 +13,7 @@ const Login = () => {
       await login(values.email, values.password)
       navigate('/')
     } catch (e) {
-      alert('Ошибка входа')
+      alert('Ошибка авторизации');
     }
   }
 

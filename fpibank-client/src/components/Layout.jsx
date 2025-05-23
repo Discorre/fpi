@@ -10,6 +10,9 @@ const LayoutComponent = ({ children }) => {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
+  const token = localStorage.getItem('token')
+  const rtoken = localStorage.getItem('rtoken')
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#fff' }}>
@@ -23,7 +26,7 @@ const LayoutComponent = ({ children }) => {
         </ul>
       </nav>
         <h2 style={{ color: '#fff', margin: 0 }}>🏦 FPIBank</h2>
-        {user && <Button onClick={() => logout()}>Выход</Button>}
+        {user && <Button onClick={() => logout(token, rtoken)}>Выход</Button>}
       </Header>
       <Content style={{ padding: '50px' }}>
         <div style={{ maxWidth: '1000px', margin: 'auto' }}>{children}</div>

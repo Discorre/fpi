@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react'
 import axios from 'axios'
+import api from './api/api'
 
 const AuthContext = createContext()
 
@@ -21,28 +22,41 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUser = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/me')
+      const res = await api.get('http://localhost:8000/me')
       setUser(res.data)
     } catch (e) {
-      logout()
+      //logout()
     }
     setLoading(false)
   }
 
   const login = async (email, password) => {
-    const res = await axios.post('http://localhost:8000/auth/login', { email, password })
-    const newToken = res.data.access_token
-    setToken(newToken)
-    localStorage.setItem('token', newToken)
-    axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
-    await fetchUser()
+    try{
+      const res = await axios.post('http://localhost:8000/auth/login', { email, password })
+      const newToken = res.data.access_token
+      const newRToken = res.data.refresh_token
+      setToken(newToken)
+      localStorage.setItem('token', newToken)
+      localStorage.setItem('rtoken', newRToken)
+      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`
+      await fetchUser()
+    } catch (e){
+      alert(res.data.details)
+    }
+
   }
 
   const register = async (email, password) => {
     await axios.post('http://localhost:8000/auth/register', { email, password })
   }
 
-  const logout = () => {
+  const logout = (access_token, refresh_token) => {
+    console.log(access_token, refresh_token);
+    axios.post('http://localhost:8000/auth/logout', {refresh_token}, {
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+      },
+    });
     setUser(null)
     setToken('')
     localStorage.removeItem('token')

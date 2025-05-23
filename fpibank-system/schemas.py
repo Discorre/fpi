@@ -43,3 +43,6 @@ class LogsOut(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+class LogoutWithRefresh(BaseModel):
+    refresh_token: str

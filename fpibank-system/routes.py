@@ -5,6 +5,7 @@ from dependencies import get_current_user
 from models import User, Account, Operation, Log
 from schemas import TransferRequest
 from decimal import Decimal
+import auth
 import httpx
 
 router = APIRouter()
@@ -28,6 +29,7 @@ async def transfer_funds(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+
     if user.email == data.target_email:
         raise HTTPException(status_code=400, detail="Нельзя переводить самому себе")
 
