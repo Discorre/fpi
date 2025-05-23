@@ -23,7 +23,7 @@ async def get_exchange_rate_func(from_currency: str, to_currency: str) -> float:
             raise HTTPException(status_code=400, detail=f"Неподдерживаемая валюта {to_currency}")
         return float(rate)
 
-@router.post("/transfer")
+@router.post("/api/v1/transfer")
 async def transfer_funds(
     data: TransferRequest,
     user: User = Depends(get_current_user),
@@ -76,7 +76,7 @@ async def transfer_funds(
 
     return {"message": "Перевод выполнен успешно"}
 
-@router.get("/operations")
+@router.get("/api/v1/operations")
 def get_operations(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     operations = db.query(Operation).join(Account, Operation.sender_account_id == Account.id).filter(Account.user_id == user.id).all()
     result = []
@@ -91,14 +91,14 @@ def get_operations(user: User = Depends(get_current_user), db: Session = Depends
         })
     return {"operations": result}
 
-@router.get("/logs")
+@router.get("/api/v1/logs")
 def get_logs(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     logs = db.query(Log).filter(Log.user_id == user.id).order_by(Log.timestamp.desc()).all()
     return [{"action": log.action, "timestamp": log.timestamp} for log in logs]
 
 
 
-@router.get("/exchange-rate/{base}/{target}")
+@router.get("/api/v1/exchange-rate/{base}/{target}")
 async def get_exchange_rate(base: str = "USD", target: str = "EUR"):
     """
     Возвращает текущий курс обмена из базовой валюты (base) в целевую (target).
@@ -127,7 +127,7 @@ async def get_exchange_rate(base: str = "USD", target: str = "EUR"):
         "updated": data.get("updated", None)
     }
 
-@router.get("/me")
+@router.get("/api/v1/me")
 def get_me(user: User = Depends(get_current_user)):
     return {
         "id": user.id,
@@ -136,6 +136,6 @@ def get_me(user: User = Depends(get_current_user)):
         "balances": {acc.currency: float(acc.balance) for acc in user.accounts}
     }
 
-@router.get("/balance")
+@router.get("/api/v1/balance")
 def get_balance(user: User = Depends(get_current_user)):
     return {"balances": {acc.currency: float(acc.balance) for acc in user.accounts}}

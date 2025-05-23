@@ -56,7 +56,18 @@ services:
     ports:
       - "80:80"
     environment:
-      - VITE_API_BASE=http://localhost:8000
+      - VITE_API_BASE=http://localhost:8000/api/v1
+
+  # mitmproxy:
+  #     build:
+  #       context: ./sniffer
+  #     ports:
+  #       - "8080:8080"  # Пробрасываем порт на хост
+  #     depends_on:
+  #       backend:
+  #         condition: service_healthy
+  #     networks:
+  #       - network_fpi
 
 volumes:
   db_data:

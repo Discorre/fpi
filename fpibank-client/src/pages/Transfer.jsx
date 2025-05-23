@@ -4,13 +4,15 @@ import { useNavigate } from 'react-router-dom'
 
 const currencies = ['USD', 'EUR', 'RUB']
 
+const API_URL = import.meta.env.VITE_API_BASE
+
 const Transfer = () => {
   const navigate = useNavigate()
   const [form] = Form.useForm()
 
   const onFinish = async (values) => {
     try {
-      const res = await fetch('http://localhost:8000/transfer', {
+      const res = await fetch(`${API_URL}/transfer`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

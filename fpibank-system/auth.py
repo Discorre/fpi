@@ -11,7 +11,7 @@ from redis_client import redis_client
 import os
 import schemas
 
-router = APIRouter(prefix="/auth")
+router = APIRouter()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "secret")
 ALGORITHM = "HS256"
@@ -29,7 +29,7 @@ async def is_token_blacklisted(token: str):
     exists = await redis_client.exists(f"blacklist:{token}")
     return exists == 1
 
-@router.post("/register")
+@router.post("/api/v1/auth/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Данная электронная почта уже используется")
@@ -42,7 +42,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Регистрация пользователя успешна"}
 
-@router.post("/login")
+@router.post("/api/v1/auth/login")
 def login(user: UserCreate, db: Session = Depends(get_db)) -> Token:
     db_user = db.query(User).filter(User.email == user.email).first()
     if not db_user or not pwd_context.verify(user.password, db_user.hashed_password):
@@ -53,7 +53,7 @@ def login(user: UserCreate, db: Session = Depends(get_db)) -> Token:
     db.commit()
     return Token(access_token=access, refresh_token=refresh)
 
-@router.post("/refresh")
+@router.post("/api/v1/auth/refresh")
 def refresh_token(request: schemas.RefreshTokenRequest) -> Token:
     try:
         payload = jwt.decode(request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -66,7 +66,7 @@ def refresh_token(request: schemas.RefreshTokenRequest) -> Token:
     access = create_token({"user_id": user_id}, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     return Token(access_token=access)
 
-@router.post("/logout")
+@router.post("/api/v1/auth/logout")
 async def logout(
     request: schemas.LogoutWithRefresh,
     req: Request

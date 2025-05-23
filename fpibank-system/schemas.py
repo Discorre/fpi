@@ -1,10 +1,23 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 from typing import Optional
 from datetime import datetime
+import re
 
 class UserCreate(BaseModel):
-    email: str
+    email: EmailStr
     password: str
+
+    @validator("email")
+    def validate_clean_email(cls, v):
+        # Запрещаем любые HTML-теги и скрипты
+        if re.search(r"[<>]", v):
+            raise ValueError("Email содержит недопустимые символы")
+
+        # Дополнительно: можно блокировать потенциально подозрительные шаблоны
+        if "script" in v.lower():
+            raise ValueError("Email содержит запрещённое содержимое")
+
+        return v
 
 class Token(BaseModel):
     access_token: str
@@ -25,7 +38,7 @@ class TransferRequest(BaseModel):
 
 class MeResponse(BaseModel):
     id: int
-    email: str
+    email: EmailStr
     created_at: datetime
     balances: dict[str, float]
 

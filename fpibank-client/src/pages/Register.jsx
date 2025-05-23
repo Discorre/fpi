@@ -9,14 +9,16 @@ const Register = () => {
   const { register } = useAuth()
 
   const onFinish = async (values) => {
-    try {
-      await register(values.email, values.password)
-      alert('Регистрация успешна!')
-      navigate('/login')
-    } catch (e) {
-      alert('Ошибка регистрации')
-    }
+  try {
+    await register(values.email, values.password);
+    // Только если регистрация успешна:
+    alert("Регистрация успешна!");
+    navigate("/login");
+  } catch (e) {
+    // Перенаправляем обратно на страницу регистрации
+    navigate("/register");
   }
+};
 
   return (
     <Form form={form} onFinish={onFinish} layout="vertical">

@@ -4,6 +4,8 @@ import { useAuth } from '../authContext'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/api'
 
+const API_URL = import.meta.env.VITE_API_BASE
+
 const Dashboard = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -12,7 +14,7 @@ const Dashboard = () => {
   useEffect(() => {
   const fetchOps = async () => {
     try {
-      const res = await api.get('http://localhost:8000/operations');
+      const res = await api.get(`${API_URL}/operations`);
       setOperations(res.data.operations || []);
     } catch (error) {
       console.error('Ошибка загрузки операций:', error);

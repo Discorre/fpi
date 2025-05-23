@@ -9,13 +9,16 @@ const Login = () => {
   const { login } = useAuth()
 
   const onFinish = async (values) => {
-    try {
-      await login(values.email, values.password)
-      navigate('/')
-    } catch (e) {
-      alert('Ошибка авторизации');
-    }
+  try {
+    await login(values.email, values.password);
+    // Только если авторизация успешна:
+    alert("Вы успешно вошли!");
+    navigate("/"); // или куда нужно перенаправить
+  } catch (e) {
+    // Можно просто оставить alert внутри login(), а здесь перенаправить
+    navigate("/login");
   }
+};
 
   return (
     <Form form={form} onFinish={onFinish} layout="vertical">
