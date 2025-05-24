@@ -1,7 +1,8 @@
 # models.py
-from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, String, Numeric, ForeignKey, DateTime, func, Float
 from sqlalchemy.orm import relationship
 from database import Base
+from datetime import datetime
 
 class User(Base):
     __tablename__ = "users"
@@ -43,3 +44,12 @@ class Log(Base):
     action = Column(String, nullable=False)
     timestamp = Column(DateTime, default=func.now())
     user = relationship("User", back_populates="logs")
+
+class ExchangeRate(Base):
+    __tablename__ = "exchange_rates"
+    
+    base = Column(String(3), primary_key=True)
+    target = Column(String(3), primary_key=True)
+    rate = Column(Float, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    next_update = Column(DateTime, default=lambda: datetime.utcnow() + datetime.timedelta(minutes=20))

@@ -1,36 +1,111 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Body
 from sqlalchemy.orm import Session
 from database import get_db
 from dependencies import get_current_user
-from models import User, Account, Operation, Log
+from models import User, Account, Operation, Log, ExchangeRate
 from schemas import TransferRequest
 from decimal import Decimal
-import auth
+from fastapi_limiter.depends import RateLimiter
 import httpx
+import httpx
+import asyncio
+from datetime import datetime, timedelta
 
 router = APIRouter()
-
-EXCHANGE_API_URL = "https://api.exchangerate-api.com/v4/latest/"
+EXCHANGE_API_URL = "https://v6.exchangerate-api.com/v6/a4353249caf64d885434ac6c/pair"
+SUPPORTED_CURRENCIES = {"USD", "EUR", "RUB"}
 
 async def get_exchange_rate_func(from_currency: str, to_currency: str) -> float:
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{EXCHANGE_API_URL}/{from_currency.upper()}")
+    url = f"https://v6.exchangerate-api.com/v6/a4353249caf64d885434ac6c/pair/{from_currency.upper()}/{to_currency.upper()}"
+    print(f"Запрашиваю курс: {url}")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(url)
+        print(response)
         if response.status_code != 200:
             raise HTTPException(status_code=502, detail="Ошибка получения курса валют")
+        
         data = response.json()
-        rate = data["rates"].get(to_currency.upper())
-        if not rate:
-            raise HTTPException(status_code=400, detail=f"Неподдерживаемая валюта {to_currency}")
-        return float(rate)
+        
+        if data["result"] != "success":
+            raise HTTPException(status_code=502, detail="Ошибка при получении данных от API")
 
-@router.post("/api/v1/transfer")
+        return float(data["conversion_rate"])
+
+async def update_exchange_rate(db: Session, base: str, target: str):
+    url = f"https://v6.exchangerate-api.com/v6/a4353249caf64d885434ac6c/pair/{base.upper()}/{target.upper()}"
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(url)
+        if response.status_code != 200:
+            raise HTTPException(status_code=502, detail="Ошибка получения данных от API")
+        
+        data = response.json()
+        if data.get("result") != "success":
+            raise HTTPException(status_code=502, detail="Ошибка при получении данных от API")
+
+    rate = float(data["conversion_rate"])
+    now = datetime.utcnow()
+    next_update = now + timedelta(minutes=20)
+
+    # Сохраняем или обновляем курс
+    db_rate = db.query(ExchangeRate).filter(
+        ExchangeRate.base == base.upper(),
+        ExchangeRate.target == target.upper()
+    ).first()
+
+    if db_rate:
+        db_rate.rate = rate
+        db_rate.updated_at = now
+        db_rate.next_update = next_update
+    else:
+        db_rate = ExchangeRate(
+            base=base.upper(),
+            target=target.upper(),
+            rate=rate,
+            updated_at=now,
+            next_update=next_update
+        )
+        db.add(db_rate)
+
+    db.commit()
+    return db_rate
+
+
+async def get_cached_exchange_rate(db: Session, base: str, target: str):
+    now = datetime.utcnow()
+    db_rate = db.query(ExchangeRate).filter(
+        ExchangeRate.base == base.upper(),
+        ExchangeRate.target == target.upper()
+    ).first()
+
+    if not db_rate or db_rate.next_update < now:
+        await update_exchange_rate(db, base, target)
+        # Обновляем после обновления
+        db_rate = db.query(ExchangeRate).filter(
+            ExchangeRate.base == base.upper(),
+            ExchangeRate.target == target.upper()
+        ).first()
+
+    if not db_rate:
+        raise HTTPException(status_code=404, detail="Курс не найден")
+
+    return {
+        "base": db_rate.base,
+        "target": db_rate.target,
+        "rate": db_rate.rate,
+        "updated": db_rate.updated_at,
+        "next_update": db_rate.next_update
+    }
+
+@router.post("/api/v1/transfer", dependencies=[Depends(RateLimiter(times=1, seconds=5))])
 async def transfer_funds(
     data: TransferRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
 
-    if user.email == data.target_email:
+    if user.email == data.target_email and data.from_currency == data.to_currency:
         raise HTTPException(status_code=400, detail="Нельзя переводить самому себе")
 
     sender_account = db.query(Account).filter(
@@ -96,35 +171,20 @@ def get_logs(user: User = Depends(get_current_user), db: Session = Depends(get_d
     logs = db.query(Log).filter(Log.user_id == user.id).order_by(Log.timestamp.desc()).all()
     return [{"action": log.action, "timestamp": log.timestamp} for log in logs]
 
-
-
 @router.get("/api/v1/exchange-rate/{base}/{target}")
-async def get_exchange_rate(base: str = "USD", target: str = "EUR"):
-    """
-    Возвращает текущий курс обмена из базовой валюты (base) в целевую (target).
-    Например: /exchange-rate/USD/EUR
-    """
-    url = f"{EXCHANGE_API_URL}/{base.upper()}"
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url)
-
-    if response.status_code != 200:
-        raise HTTPException(status_code=502, detail="Ошибка при получении данных от сервиса курсов валют")
-
-    data = response.json()
-    rates = data.get("rates", {})
-
-    target_rate = rates.get(target.upper())
-
-    if not target_rate:
-        raise HTTPException(status_code=400, detail=f"Целевая валюта {target} не найдена")
+async def get_exchange_rate_route(
+    base: str = "USD",
+    target: str = "EUR",
+    db: Session = Depends(get_db)
+):
+    rate_info = await get_cached_exchange_rate(db, base, target)
 
     return {
-        "base": base.upper(),
-        "target": target.upper(),
-        "rate": target_rate,
-        "updated": data.get("updated", None)
+        "base": rate_info["base"],
+        "target": rate_info["target"],
+        "rate": rate_info["rate"],
+        "updated": rate_info["updated"],
+        "next_update": rate_info["next_update"]
     }
 
 @router.get("/api/v1/me")
@@ -139,3 +199,38 @@ def get_me(user: User = Depends(get_current_user)):
 @router.get("/api/v1/balance")
 def get_balance(user: User = Depends(get_current_user)):
     return {"balances": {acc.currency: float(acc.balance) for acc in user.accounts}}
+
+SUPPORTED_CURRENCIES = {"USD", "EUR", "RUB"}
+
+@router.post("/api/v1/manage-account")
+async def manage_account(
+    action: str = Body(..., description="Только 'add'"),
+    currency: str = Body(..., description="Валюта: USD, EUR, RUB"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    currency = currency.upper()
+
+    if action != "add":
+        raise HTTPException(status_code=400, detail="Неверное действие. Разрешено только 'add'")
+
+    if currency not in SUPPORTED_CURRENCIES:
+        raise HTTPException(status_code=400, detail="Недопустимая валюта")
+
+    existing = db.query(Account).filter(Account.user_id == user.id, Account.currency == currency).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Счет в этой валюте уже существует")
+
+    new_account = Account(user_id=user.id, currency=currency, balance=Decimal("0.00"))
+    db.add(new_account)
+    db.add(Log(user_id=user.id, action=f"Создан счёт в валюте {currency}"))
+    db.commit()
+    db.refresh(new_account)
+
+    return {
+        "message": f"Счёт в валюте {currency} успешно создан",
+        "account": {
+            "currency": new_account.currency,
+            "balance": float(new_account.balance)
+        }
+    }

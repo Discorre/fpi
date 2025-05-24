@@ -3,10 +3,13 @@ from fastapi import Depends, HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User
+from models import User, ExchangeRate
 from auth import SECRET_KEY, ALGORITHM
 from fastapi.security import OAuth2PasswordBearer
 import auth
+from datetime import datetime
+import httpx
+import asyncio
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
@@ -38,3 +41,4 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     return user
+

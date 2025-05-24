@@ -146,58 +146,60 @@
 
   <script>
     function tryParseNestedJSON(obj) {
-    // Рекурсивно проходим по объекту и пытаемся распарсить строки, которые выглядят как JSON
-    if (typeof obj === "string") {
-      try {
-        const parsed = JSON.parse(obj);
-        return tryParseNestedJSON(parsed);
-      } catch {
-        return obj; // не JSON — оставляем строку как есть
-      }
-    } else if (Array.isArray(obj)) {
-      return obj.map(tryParseNestedJSON);
-    } else if (typeof obj === "object" && obj !== null) {
-      const result = {};
-      for (const key in obj) {
-        result[key] = tryParseNestedJSON(obj[key]);
-      }
-      return result;
-    }
-    return obj;
-  }
-
-  document.addEventListener("DOMContentLoaded", function() {
-    const modal = document.getElementById("responseModal");
-    const modalText = document.getElementById("responseModalText");
-    const modalClose = document.getElementById("responseModalClose");
-
-    document.querySelectorAll(".response-btn").forEach(button => {
-      button.addEventListener("click", () => {
-        let resp = button.getAttribute("data-response");
+      if (typeof obj === "string") {
         try {
-          let parsed = JSON.parse(resp);
-          // Парсим вложенные JSON-строки рекурсивно
-          let smartParsed = tryParseNestedJSON(parsed);
-          modalText.textContent = JSON.stringify(smartParsed, null, 2);
+          const parsed = JSON.parse(obj);
+          return tryParseNestedJSON(parsed);
         } catch {
-          modalText.textContent = resp;
+          return obj;
         }
-        modal.style.display = "block";
+      } else if (Array.isArray(obj)) {
+        return obj.map(tryParseNestedJSON);
+      } else if (typeof obj === "object" && obj !== null) {
+        const result = {};
+        for (const key in obj) {
+          result[key] = tryParseNestedJSON(obj[key]);
+        }
+        return result;
+      }
+      return obj;
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+      const modal = document.getElementById("responseModal");
+      const modalText = document.getElementById("responseModalText");
+      const modalClose = document.getElementById("responseModalClose");
+
+      document.querySelectorAll(".response-btn").forEach(button => {
+        button.addEventListener("click", () => {
+          let respAttr = button.getAttribute("data-response");
+          try {
+            // 1. Сначала парсим из JSON строки в JS-строку или объект
+            let resp = JSON.parse(respAttr);
+            // 2. Если resp - строка, пробуем рекурсивно распарсить вложенные JSON
+            let smartParsed = tryParseNestedJSON(resp);
+            modalText.textContent = JSON.stringify(smartParsed, null, 2);
+          } catch (e) {
+            // Если парсинг не удался, просто выводим текст как есть
+            modalText.textContent = respAttr;
+          }
+          modal.style.display = "block";
+        });
       });
-    });
 
-    modalClose.onclick = () => {
-      modal.style.display = "none";
-      modalText.textContent = "";
-    };
-
-    window.onclick = event => {
-      if (event.target === modal) {
+      modalClose.onclick = () => {
         modal.style.display = "none";
         modalText.textContent = "";
-      }
-    };
-  });
+      };
+
+      window.onclick = event => {
+        if (event.target === modal) {
+          modal.style.display = "none";
+          modalText.textContent = "";
+        }
+      };
+    });
+
   </script>
   <script>
   // Определяем протокол WebSocket в зависимости от протокола страницы

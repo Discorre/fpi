@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi_limiter import FastAPILimiter
+from fastapi_limiter.depends import RateLimiter
+import redis.asyncio as aioredis
 import auth, routes, database
 from jose import jwt
 from database import Base, engine
@@ -42,11 +45,7 @@ async def log_requests(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(routes.router)
 
-# @app.on_event("startup")
-# async def startup_event():
-#     await database.get_db()
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     asyncio.run(database.get_db())
-#     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+@app.on_event("startup")
+async def startup():
+    redis = await aioredis.from_url("redis://redis:6379/0", encoding="utf-8", decode_responses=True)
+    await FastAPILimiter.init(redis)
