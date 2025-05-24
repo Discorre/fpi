@@ -1,93 +1,174 @@
 import re
 import json
 import os
+import asyncio
+import threading
 from datetime import datetime
-from mitmproxy import http
 import urllib.parse
+from threading import Thread
+from fastapi import FastAPI, Request, WebSocket, Query
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+import uvicorn
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from mitmproxy import http
 
-#print(urllib.parse.unquote("http%3A//localhost%3A8000"))
-
-# Паттерны атак
-ATTACK_PATTERNS = {
-    "SQLI": r"(union\s+select|drop\s+table|insert\s+into|delete\s+from|select\s+.*\s+from|;|--)",  # SQL Injection
-    "XSS": r"(<script>|onerror=|onload=|javascript:|<img\s+src=)",  # Cross-site Scripting
-    "CMDI": r"(\|\||&&|;|`|\\x)",  # Command Injection
-    "LFI": r"(\.\./|\.\.\\|/etc/passwd|boot\.ini)",  # Local File Inclusion
-    "SSRF": r"(http[s]?://127\.0\.0\.1|http[s]?://localhost|file://|gopher://)",  # Server-Side Request Forgery
-    "XXE": r"(<!DOCTYPE|<!ENTITY|<\?xml)",  # XML External Entity
-    "IDOR": r"(\bid=|\buserId=|\bcustomerId=).*?(\d{4,}|\w{8,})",  # Insecure Direct Object Reference
-    "NOSQLI": r"(\$ne|\"username\".*\$exists|\"password\".*\$regex|\"admin\".*true)",    # NoSQL Injection (MongoDB, etc.)
-}
-
+# --- Конфигурация FastAPI ---
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+CLIENTS = set()
 LOG_FILE = "attack_logs.json"
 
-def append_json_log(entry):
-    """Добавляет запись в JSON-файл в формате массива."""
-    logs = []
-    if os.path.exists(LOG_FILE):
-        try:
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-        except json.JSONDecodeError:
-            # Файл повреждён или пуст — начинаем заново
-            logs = []
+# --- Схемы атак ---
+ATTACK_PATTERNS = {
+    "SQLI": r"(union\s+select|drop\s+table|insert\s+into|delete\s+from|select\s+.*\s+from|;|--)",
+    "XSS": r"(<script>|onerror=|onload=|javascript:|<img\s+src=)",
+    "CMDI": r"(\|\||&&|;|`|\\x)",
+    "LFI": r"(\.\./|\.\.\\|/etc/passwd|boot\.ini)",
+    "XXE": r"(<!DOCTYPE|<!ENTITY|<\?xml)",
+    "IDOR": r"(\bid=|\buserId=|\bcustomerId=).*?(\d{4,}|\w{8,})",
+    "NOSQLI": r"(\$ne|\"username\".*\$exists|\"password\".*\$regex|\"admin\".*true)",
+}
 
-    logs.append(entry)
+# --- Кэширование в памяти зарегистрированных потоков для предотвращения дублирования ---
+logged_flows = set()
 
-    with open(LOG_FILE, "w", encoding="utf-8") as f:
-        json.dump(logs, f, indent=2, ensure_ascii=False)
-
-def detect_attack(payload):
-    """Проверяет payload на наличие известных паттернов атак."""
+def detect_attack(payload: str) -> list[str]:
     detected = []
     for attack_type, pattern in ATTACK_PATTERNS.items():
         if re.search(pattern, payload, re.IGNORECASE | re.DOTALL):
             detected.append(attack_type)
     return detected
 
-def log_attack(flow: http.HTTPFlow):
-    """Логирует подозрительные запросы и ответы."""
-    timestamp = datetime.now().isoformat()
-    request_content = flow.request.get_text() or ""
-    response_content = flow.response.get_text() or "" if flow.response else ""
+def append_json_log(entry: dict):
+    logs = []
+    if os.path.exists(LOG_FILE):
+        try:
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                logs = json.load(f)
+        except json.JSONDecodeError:
+            logs = []
 
-    # Раскодируем URL, если он был закодирован (например, %3A вместо :)
-    decoded_url = urllib.parse.unquote(flow.request.url)
-
-    # Также можно попробовать декодировать путь, если он используется отдельно
-    decoded_path = urllib.parse.unquote(flow.request.path)
-
-    attacks = detect_attack(request_content + response_content + decoded_url + decoded_path)
-
-    if attacks:
-        # print(f"[!] Подозрительная активность: {attacks} от {flow.client_conn.address[0]}")
-
-        log_entry = {
-            "timestamp": timestamp,
-            "source_ip": flow.client_conn.address[0],
-            "host": flow.request.host,
-            "method": flow.request.method,
-            "url": decoded_url,
-            "request_snippet": request_content[:300],
-            "response_snippet": response_content[:300],
-            "detected_attacks": attacks
-        }
-        append_json_log(log_entry)
-
-
-def response(flow: http.HTTPFlow):
-    """Вызывается при получении ответа от сервера"""
-    log_attack(flow)
+    logs.append(entry)
+    with open(LOG_FILE, "w", encoding="utf-8") as f:
+        json.dump(logs, f, indent=2, ensure_ascii=False)
 
 def request(flow: http.HTTPFlow):
-    # Пример: /http%3A//localhost%3A8000/api/v1/auth/register
     decoded_path = urllib.parse.unquote(flow.request.path)
-
-    # Если путь начинается с абсолютного URL
     match = re.match(r"^/https?:/[^/]+(/.*)", decoded_path)
     if match:
         corrected_path = match.group(1)
         print(f"[+] Исправляем путь: {decoded_path} -> {corrected_path}")
         flow.request.path = corrected_path
 
-    log_attack(flow)
+    request_payload = flow.request.get_text() or ""
+    url = urllib.parse.unquote(flow.request.pretty_url)
+    path = urllib.parse.unquote(flow.request.path)
+    full_content = request_payload + url + path
+
+    if detect_attack(full_content):
+        flow.metadata["attack_detected"] = True
+
+def response(flow: http.HTTPFlow):
+    if not flow.metadata.get("attack_detected"):
+        return
+
+    if flow.id in logged_flows:
+        return
+    logged_flows.add(flow.id)
+
+    request_content = flow.request.get_text() or ""
+    response_content = flow.response.get_text() or "" if flow.response else ""
+    decoded_url = urllib.parse.unquote(flow.request.pretty_url)
+    decoded_path = urllib.parse.unquote(flow.request.path)
+    attacks = detect_attack(request_content + response_content + decoded_url + decoded_path)
+
+    if not attacks:
+        return
+
+    log_entry = {
+        "flow_id": flow.id,
+        "timestamp": datetime.now().isoformat(),
+        "source_ip": flow.client_conn.address[0],
+        "host": flow.request.host,
+        "method": flow.request.method,
+        "url": decoded_url,
+        "request_snippet": request_content[:300],
+        "response_snippet": response_content[:300],
+        "detected_attacks": attacks,
+    }
+    append_json_log(log_entry)
+
+# --- Обработчик сторожевого таймера для изменений файлов ---
+loop = asyncio.get_event_loop()
+
+class LogFileHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if event.src_path.endswith(LOG_FILE):
+            asyncio.run_coroutine_threadsafe(notify_clients(), loop)
+
+async def notify_clients():
+    dead = set()
+    for ws in CLIENTS:
+        try:
+            await ws.send_text("updated")
+        except Exception:
+            dead.add(ws)
+    CLIENTS.difference_update(dead)
+
+def start_file_watcher():
+    observer = Observer()
+    observer.schedule(LogFileHandler(), path='.', recursive=False)
+    observer.start()
+
+@app.get("/logs", response_class=HTMLResponse)
+async def read_logs(request: Request, page: int = Query(1, ge=1), per_page: int = Query(10, ge=1, le=100)):
+    logs = []
+    if os.path.exists(LOG_FILE):
+        try:
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                logs = json.load(f)
+        except Exception:
+            logs = []
+
+    total = len(logs)
+    start = (page - 1) * per_page
+    end = start + per_page
+    logs_page = logs[start:end]
+
+    total_pages = (total + per_page - 1) // per_page
+
+    return templates.TemplateResponse("logs.html", {
+        "request": request,
+        "logs": logs_page,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+        "total": total
+    })
+
+@app.websocket("/ws/logs")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    CLIENTS.add(websocket)
+    try:
+        while True:
+            await asyncio.sleep(10)
+    except:
+        pass
+    finally:
+        CLIENTS.remove(websocket)
+
+def start_api():
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8082,
+        ssl_certfile="./certs/selfsigned.crt",   # Путь к сертификату
+        ssl_keyfile="./certs/selfsigned.key"     # Путь к приватному ключу
+    )
+
+# --- Запуск фоновых потоков ---
+threading.Thread(target=start_file_watcher, daemon=True).start()
+threading.Thread(target=start_api, daemon=True).start()

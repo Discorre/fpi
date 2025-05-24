@@ -4,12 +4,28 @@ curl -X POST http://localhost:8000/transfer \
      -d '{"target_email": "hacker@example.com", "amount": 100}'
 
 SQLi
-curl -X POST http://localhost:8000/transfer \
+curl -X POST http://localhost:8080/api/v1/transfer \
      -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xxxxx" \
      -d '{"target_email": "hacker@example.com OR 1=1; DROP TABLE users; --", "amount": 100}'
 
 XSS
-curl -X POST http://localhost:8000/register \
+curl -X POST http://localhost:8080/api/v1/auth/register \
      -d '{"email": "<script>alert(1)</script>@example.com", "password": "123"}'
 
 
+mitmproxy --mode reverse:http://127.0.0.1:8000 -p 8080 -s main.py --set block_global=false
+mitmweb --mode reverse:http://127.0.0.1:8000 -p 8080 -s main.py --set block_global=false
+mitmweb --mode reverse:http://127.0.0.1:8000 -p 8080 -s main.py --set block_global=false --web-host 0.0.0.0
+
+mitmweb --mode reverse:http://127.0.0.1:8000 \
+        --listen-port 8080 \
+        --cert certs/selfsigned.crt \
+        --key certs/selfsigned.key \
+        -s main.py \
+        --set block_global=false
+
+mitmweb --mode reverse:http://127.0.0.1:8000 \
+        --listen-port 8080 \
+        --certs '*=certs/full.pem' \
+        -s main.py \
+        --set block_global=false
