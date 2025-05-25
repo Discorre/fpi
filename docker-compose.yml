@@ -48,15 +48,33 @@ services:
       retries: 5
 
 
-  # frontend:
-  #   build:
-  #     context: ./fpibank-client
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   environment:
-  #     - VITE_API_BASE=http://localhost:8000/api/v1
+  frontend:
+    build:
+      context: ./fpibank-client
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./fpibank-client/certs/discorre.ru:/etc/letsencrypt/live/discorre.ru
 
+    networks:
+      - network_fpi
+
+  # certbot:
+  #   image: certbot/certbot
+  #   container_name: certbot
+  #   depends_on:
+  #     frontend:
+  #       condition: service_started
+  #   entrypoint: ["sh", "-c", "sleep 10 && certbot certonly --webroot --webroot-path=/var/www/html --email execute.cpp@gmail.com --agree-tos --no-eff-email -d discorre.ru"]
+  #   volumes:
+  #     - letsencrypt_data:/etc/letsencrypt
+  #     - letsencrypt_logs:/var/log/letsencrypt
+  #     - letsencrypt:/var/www/html
+  #   networks:
+  #     - network_fpi
+  #   command: ["sh", "-c", "crond -f && sleep infinity"]
+  
   # mitmproxy:
   #     build:
   #       context: ./sniffer
@@ -71,6 +89,9 @@ services:
 volumes:
   db_data:
   redis_data:
+  letsencrypt:
+  letsencrypt_data:
+  letsencrypt_logs:
 
 networks:
   network_fpi:
