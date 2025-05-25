@@ -31,6 +31,26 @@ ATTACK_PATTERNS = {
     "NOSQLI": r"(\$ne|\"username\".*\$exists|\"password\".*\$regex|\"admin\".*true)",
 }
 
+ATTACK_RECOMMENDATIONS = {
+    "SQLI": "Используйте подготовленные выражения (prepared statements) и ORM. Не формируйте SQL-запросы через конкатенацию строк.",
+    "XSS": "Экранируйте пользовательский ввод при выводе на страницу. Используйте Content Security Policy (CSP).",
+    "CMDI": "Не передавайте пользовательский ввод в системные команды. Используйте безопасные API без оболочек.",
+    "LFI": "Никогда не используйте пользовательский ввод для построения путей к файлам. Проверяйте и ограничивайте путь.",
+    "XXE": "Отключите обработку внешних сущностей в XML-парсерах. Используйте безопасные настройки.",
+    "IDOR": "Реализуйте контроль доступа на уровне объекта. Никогда не доверяйте переданным ID.",
+    "NOSQLI": "Проверяйте и фильтруйте все параметры, особенно те, что попадают в NoSQL-запросы. Не разрешайте передачу операторов.",
+}
+
+ATTACK_SEVERITY = {
+    "SQLI": "Critical",
+    "XSS": "High",
+    "CMDI": "High",
+    "LFI": "Medium",
+    "XXE": "Medium",
+    "IDOR": "Low",
+    "NOSQLI": "Medium"
+}
+
 # --- Кэширование в памяти зарегистрированных потоков для предотвращения дублирования ---
 logged_flows = set()
 
@@ -97,6 +117,9 @@ def response(flow: http.HTTPFlow):
         "request_snippet": request_content[:300],
         "response_snippet": response_content[:300],
         "detected_attacks": attacks,
+        "recommendations": [ATTACK_RECOMMENDATIONS[a] for a in attacks if a in ATTACK_RECOMMENDATIONS],
+        "severity": [ATTACK_SEVERITY[a] for a in attacks if a in ATTACK_SEVERITY],
+
     }
     append_json_log(log_entry)
 
@@ -165,8 +188,8 @@ def start_api():
         app,
         host="0.0.0.0",
         port=8082,
-        ssl_certfile="./certs/discorre.ru/fullchain.pem",   # Путь к сертификату
-        ssl_keyfile="./certs/discorre.ru/privkey.pem"     # Путь к приватному ключу
+        # ssl_certfile="./certs/discorre.ru/fullchain.pem",   # Путь к сертификату
+        # ssl_keyfile="./certs/discorre.ru/privkey.pem"     # Путь к приватному ключу
     )
 
 # --- Запуск фоновых потоков ---

@@ -1,76 +1,3 @@
-<!-- <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Attack Logs</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
-    table { border-collapse: collapse; width: 100%; background: #fff; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th { background: #333; color: white; }
-    tr:nth-child(even) { background: #f9f9f9; }
-    .attack-tags span { background: #e74c3c; color: white; padding: 2px 6px; border-radius: 3px; margin-right: 4px; font-size: 0.9em; }
-    .mitm-btn {
-      background-color: #2ecc71;
-      color: white;
-      padding: 6px 10px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.9em;
-      text-decoration: none;
-    }
-    .mitm-btn:hover {
-      background-color: #27ae60;
-    }
-  </style>
-  <script>
-    const ws = new WebSocket("ws://" + location.host + "/ws/logs");
-    ws.onmessage = () => location.reload();
-  </script>
-</head>
-<body>
-  <h1>Журнал подозрительных запросов</h1>
-
-  <table>
-    <thead>
-      <tr>
-        <th>Время</th>
-        <th>IP клиента</th>
-        <th>Метод</th>
-        <th>URL</th>
-        <th>Обнаруженные атаки</th>
-        <th>Фрагмент запроса</th>
-        <th>mitmweb</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for log in logs %}
-      <tr>
-        <td>{{ log.timestamp }}</td>
-        <td>{{ log.source_ip }}</td>
-        <td>{{ log.method }}</td>
-        <td><a href="{{ log.url }}" target="_blank">{{ log.url }}</a></td>
-        <td class="attack-tags">
-          {% for attack in log.detected_attacks %}
-          <span>{{ attack }}</span>
-          {% endfor %}
-        </td>
-        <td><pre>{{ log.request_snippet }}</pre></td>
-        <td>
-          <a class="mitm-btn"
-             href="http://localhost:8081/#/flows/{{log.flow_id}}/request"
-             target="_blank">Открыть</a>
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="7" style="text-align:center;">Логов нет</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</body>
-</html> -->
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -83,6 +10,7 @@
     th { background: #333; color: white; }
     tr:nth-child(even) { background: #f9f9f9; }
     .attack-tags span { background: #e74c3c; color: white; padding: 2px 6px; border-radius: 3px; margin-right: 4px; font-size: 0.9em; }
+
     .pagination { margin-top: 20px; }
     .pagination button, select { padding: 6px 12px; margin-right: 6px; font-size: 1em; }
 
@@ -99,19 +27,20 @@
     .mitm-btn:hover {
       background-color: #27ae60;
     }
+
     .response-btn {
-    padding: 4px 10px;
-    background-color: #007bff;
-    border: none;
-    border-radius: 4px;
-    color: white;
-    cursor: pointer;
-    font-size: 0.9em;
+      padding: 4px 10px;
+      background-color: #007bff;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+      font-size: 0.9em;
     }
     .response-btn:hover {
       background-color: #0056b3;
     }
-    /* Можно стилизовать всплывающее окно (модал) */
+
     #responseModal {
       display: none;
       position: fixed;
@@ -137,14 +66,25 @@
       font-size: 1.2em;
     }
   </style>
-  <div id="responseModal">
-    <div id="responseModalContent">
-      <span id="responseModalClose">&times;</span>
-      <pre id="responseModalText"></pre>
-    </div>
-  </div>
 
   <script>
+    const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const ws = new WebSocket(wsProtocol + location.host + "/ws/logs");
+    ws.onmessage = () => location.reload();
+
+    function changePerPage(select) {
+      const params = new URLSearchParams(window.location.search);
+      params.set('per_page', select.value);
+      params.set('page', '1');
+      window.location.search = params.toString();
+    }
+
+    function goToPage(page) {
+      const params = new URLSearchParams(window.location.search);
+      params.set('page', page.toString());
+      window.location.search = params.toString();
+    }
+
     function tryParseNestedJSON(obj) {
       if (typeof obj === "string") {
         try {
@@ -174,13 +114,10 @@
         button.addEventListener("click", () => {
           let respAttr = button.getAttribute("data-response");
           try {
-            // 1. Сначала парсим из JSON строки в JS-строку или объект
             let resp = JSON.parse(respAttr);
-            // 2. Если resp - строка, пробуем рекурсивно распарсить вложенные JSON
             let smartParsed = tryParseNestedJSON(resp);
             modalText.textContent = JSON.stringify(smartParsed, null, 2);
           } catch (e) {
-            // Если парсинг не удался, просто выводим текст как есть
             modalText.textContent = respAttr;
           }
           modal.style.display = "block";
@@ -199,36 +136,15 @@
         }
       };
     });
-
   </script>
-  <script>
-  // Определяем протокол WebSocket в зависимости от протокола страницы
-  const wsProtocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-  const ws = new WebSocket(wsProtocol + location.host + "/ws/logs");
-
-  ws.onmessage = () => location.reload();
-
-  function changePerPage(select) {
-    const params = new URLSearchParams(window.location.search);
-    params.set('per_page', select.value);
-    params.set('page', '1');
-    window.location.search = params.toString();
-  }
-
-  function goToPage(page) {
-    const params = new URLSearchParams(window.location.search);
-    params.set('page', page.toString());
-    window.location.search = params.toString();
-  }
-</script>
-
 </head>
+
 <body>
   <h1>Журнал подозрительных запросов</h1>
 
   <label for="per_page_select">Записей на странице:</label>
   <select id="per_page_select" onchange="changePerPage(this)">
-    {% for option in [5,10,20,50,100] %}
+    {% for option in [5, 10, 20, 50, 100] %}
       <option value="{{ option }}" {% if option == per_page %}selected{% endif %}>{{ option }}</option>
     {% endfor %}
   </select>
@@ -243,7 +159,8 @@
         <th>Атаки</th>
         <th>Фрагмент запроса</th>
         <th>Фрагмент ответа</th>
-        <th>Подробности</th>
+        <th>Рекомендации</th>
+        <th>mitmweb</th>
       </tr>
     </thead>
     <tbody>
@@ -263,18 +180,24 @@
           {% if log.response_snippet and log.response_snippet|length > 150 %}
             <button class="response-btn" data-response='{{ log.response_snippet | tojson | safe }}'>Показать ответ</button>
           {% else %}
-            {{ log.response_snippet }}
+            <pre>{{ log.response_snippet }}</pre>
           {% endif %}
         </td>
         <td>
-        <a class="mitm-btn"
-            href="http://95./#/flows/{{log.flow_id}}/request"
-            target="_blank">Открыть</a>
+          <ul>
+            {% for rec in log.recommendations %}
+              <li>🔒 {{ rec }}</li>
+            {% endfor %}
+          </ul>
         </td>
-        
+        <td>
+          <a class="mitm-btn"
+             href="http://localhost:8081/#/flows/{{log.flow_id}}/request"
+             target="_blank">Открыть</a>
+        </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" style="text-align:center;">Логов нет</td></tr>
+      <tr><td colspan="9" style="text-align:center;">Логов нет</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -283,11 +206,15 @@
     <button onclick="goToPage(1)" {% if page <= 1 %}disabled{% endif %}>« Первая</button>
     <button onclick="goToPage({{ page - 1 if page > 1 else 1 }})" {% if page <= 1 %}disabled{% endif %}>‹ Назад</button>
     <span>Страница {{ page }} из {{ total_pages }}</span>
-    <button onclick="goToPage({{ page + 1 if page < total_pages else total_pages }})" {% if page >= total_pages %}disabled{% endif %}>Вперед ›</button>
+    <button onclick="goToPage({{ page + 1 if page < total_pages else total_pages }})" {% if page >= total_pages %}disabled{% endif %}>Вперёд ›</button>
     <button onclick="goToPage({{ total_pages }})" {% if page >= total_pages %}disabled{% endif %}>Последняя »</button>
   </div>
 
-  <p>Всего записей: {{ total }}</p>
+  <div id="responseModal">
+    <div id="responseModalContent">
+      <span id="responseModalClose">&times;</span>
+      <pre id="responseModalText"></pre>
+    </div>
+  </div>
 </body>
 </html>
-
