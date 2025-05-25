@@ -165,8 +165,8 @@ def start_api():
         app,
         host="0.0.0.0",
         port=8082,
-        ssl_certfile="./certs/selfsigned.crt",   # Путь к сертификату
-        ssl_keyfile="./certs/selfsigned.key"     # Путь к приватному ключу
+        ssl_certfile="./certs/discorre.ru/fullchain.pem",   # Путь к сертификату
+        ssl_keyfile="./certs/discorre.ru/privkey.pem"     # Путь к приватному ключу
     )
 
 # --- Запуск фоновых потоков ---
