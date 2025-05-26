@@ -41,16 +41,6 @@ ATTACK_RECOMMENDATIONS = {
     "NOSQLI": "Проверяйте и фильтруйте все параметры, особенно те, что попадают в NoSQL-запросы. Не разрешайте передачу операторов.",
 }
 
-ATTACK_SEVERITY = {
-    "SQLI": "Critical",
-    "XSS": "High",
-    "CMDI": "High",
-    "LFI": "Medium",
-    "XXE": "Medium",
-    "IDOR": "Low",
-    "NOSQLI": "Medium"
-}
-
 # --- Кэширование в памяти зарегистрированных потоков для предотвращения дублирования ---
 logged_flows = set()
 
@@ -118,7 +108,6 @@ def response(flow: http.HTTPFlow):
         "response_snippet": response_content[:300],
         "detected_attacks": attacks,
         "recommendations": [ATTACK_RECOMMENDATIONS[a] for a in attacks if a in ATTACK_RECOMMENDATIONS],
-        "severity": [ATTACK_SEVERITY[a] for a in attacks if a in ATTACK_SEVERITY],
 
     }
     append_json_log(log_entry)
@@ -188,8 +177,8 @@ def start_api():
         app,
         host="0.0.0.0",
         port=8082,
-        # ssl_certfile="./certs/discorre.ru/fullchain.pem",   # Путь к сертификату
-        # ssl_keyfile="./certs/discorre.ru/privkey.pem"     # Путь к приватному ключу
+        ssl_certfile="./certs/discorre.ru/fullchain.pem",   # Путь к сертификату
+        ssl_keyfile="./certs/discorre.ru/privkey.pem"     # Путь к приватному ключу
     )
 
 # --- Запуск фоновых потоков ---

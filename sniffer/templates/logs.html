@@ -9,7 +9,7 @@
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
     th { background: #333; color: white; }
     tr:nth-child(even) { background: #f9f9f9; }
-    .attack-tags span { background: #e74c3c; color: white; padding: 2px 6px; border-radius: 3px; margin-right: 4px; font-size: 0.9em; }
+     .attack-tags span { background: #e74c3c !important; color: white; padding: 2px 6px; border-radius: 3px; margin-right: 4px; font-size: 0.9em; } 
 
     .pagination { margin-top: 20px; }
     .pagination button, select { padding: 6px 12px; margin-right: 6px; font-size: 1em; }
@@ -65,6 +65,51 @@
       font-weight: bold;
       font-size: 1.2em;
     }
+    .attack-xss {
+      background: #f39c12; /* оранжевый */
+      color: white;
+    }
+    .attack-sqli, .attack-cmdi {
+      background: #c0392b; /* тёмно-красный */
+      color: white;
+    }
+    .attack-info {
+      background: #3498db; /* синий */
+      color: white;
+    }
+    .attack-csrf {
+      background: #9b59b6; /* фиолетовый */
+      color: white;
+    }
+    .attack-lfi, .attack-rfi {
+      background: #e67e22; /* морковный */
+      color: white;
+    }
+
+    #recommendationModal {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      left: 0; top: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+    }
+    #recommendationModalContent {
+      background: white;
+      max-width: 500px;
+      margin: 10% auto;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    #recommendationModalClose {
+      float: right;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 1.2em;
+    }
+    #recommendationModalList {
+      margin-top: 20px;
+    }
+
   </style>
 
   <script>
@@ -135,7 +180,44 @@
           modalText.textContent = "";
         }
       };
+
+      const recommendationModal = document.getElementById("recommendationModal");
+      const recommendationList = document.getElementById("recommendationModalList");
+      const recommendationClose = document.getElementById("recommendationModalClose");
+
+      document.querySelectorAll(".recommendation-btn").forEach(button => {
+        button.addEventListener("click", () => {
+          recommendationList.innerHTML = "";
+          try {
+            const recs = JSON.parse(button.getAttribute("data-recommendations"));
+            recs.forEach(rec => {
+              const li = document.createElement("li");
+              li.textContent = "🔒 " + rec;
+              recommendationList.appendChild(li);
+            });
+          } catch (e) {
+            const li = document.createElement("li");
+            li.textContent = "Ошибка при разборе рекомендаций.";
+            recommendationList.appendChild(li);
+          }
+          recommendationModal.style.display = "block";
+        });
+      });
+
+      recommendationClose.onclick = () => {
+        recommendationModal.style.display = "none";
+        recommendationList.innerHTML = "";
+      };
+
+      window.addEventListener("click", event => {
+        if (event.target === recommendationModal) {
+          recommendationModal.style.display = "none";
+          recommendationList.innerHTML = "";
+        }
+      });
     });
+
+
   </script>
 </head>
 
@@ -170,29 +252,40 @@
         <td>{{ log.source_ip }}</td>
         <td>{{ log.method }}</td>
         <td><a href="{{ log.url }}" target="_blank">{{ log.url }}</a></td>
+        {% set attack_class_map = {
+          'SQL Injection': 'sql-injection',
+          'SQLi': 'sql-injection',
+          'Command Injection': 'cmdi',
+          'CMDi': 'cmdi',
+          'Cross-Site Scripting': 'xss',
+          'XSS': 'xss',
+          'CSRF': 'csrf',
+          'LFI': 'lfi',
+          'RFI': 'rfi',
+          'Info Leak': 'info',
+          'Information Disclosure': 'info'
+        } %}
         <td class="attack-tags">
           {% for attack in log.detected_attacks %}
-            <span>{{ attack }}</span>
+            <span class="attack-{{ attack_class_map.get(attack, attack|lower|replace(' ', '-')) }}">{{ attack }}</span>
           {% endfor %}
         </td>
         <td><pre>{{ log.request_snippet }}</pre></td>
         <td>
-          {% if log.response_snippet and log.response_snippet|length > 150 %}
+          {% if log.response_snippet and log.response_snippet|length > 15 %}
             <button class="response-btn" data-response='{{ log.response_snippet | tojson | safe }}'>Показать ответ</button>
           {% else %}
             <pre>{{ log.response_snippet }}</pre>
           {% endif %}
         </td>
         <td>
-          <ul>
-            {% for rec in log.recommendations %}
-              <li>🔒 {{ rec }}</li>
-            {% endfor %}
-          </ul>
+          <button class="recommendation-btn" data-recommendations='{{ log.recommendations | tojson | safe }}'>
+            Показать рекомендации
+          </button>
         </td>
         <td>
           <a class="mitm-btn"
-             href="http://localhost:8081/#/flows/{{log.flow_id}}/request"
+             href="http://95.181.173.47:8081/#/flows/{{log.flow_id}}/request"
              target="_blank">Открыть</a>
         </td>
       </tr>
@@ -216,5 +309,12 @@
       <pre id="responseModalText"></pre>
     </div>
   </div>
+  <div id="recommendationModal">
+  <div id="recommendationModalContent">
+    <span id="recommendationModalClose">&times;</span>
+    <ul id="recommendationModalList"></ul>
+  </div>
+</div>
+
 </body>
 </html>
