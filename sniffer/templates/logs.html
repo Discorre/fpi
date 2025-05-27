@@ -219,6 +219,53 @@
 
 
   </script>
+  <script>
+    let allLogs = []; // Исходные данные (инициализируются при загрузке)
+    let filteredLogs = [];
+
+    // Загружаем данные при инициализации
+    document.addEventListener("DOMContentLoaded", () => {
+      allLogs = Array.from(document.querySelectorAll("tbody tr")).map(row => {
+        const cells = row.querySelectorAll("td");
+        return {
+          ip: cells[1].innerText.trim(),
+          method: cells[2].innerText.trim(),
+          attackType: cells[3].innerText.trim(),
+          rowElement: row
+        };
+      });
+      filteredLogs = allLogs;
+    });
+
+    function applyFilters() {
+      const ipFilter = document.getElementById("filter-ip").value.trim().toLowerCase();
+      const methodFilter = document.getElementById("filter-method").value.trim().toLowerCase();
+      const attackTypeFilter = document.getElementById("filter-attack-type").value.trim().toLowerCase();
+
+      filteredLogs = allLogs.filter(log =>
+        log.ip.toLowerCase().includes(ipFilter) &&
+        log.method.toLowerCase().includes(methodFilter) &&
+        log.attackType.toLowerCase().includes(attackTypeFilter)
+      );
+
+      updateTable();
+    }
+
+    function clearFilters() {
+      document.getElementById("filter-ip").value = '';
+      document.getElementById("filter-method").value = '';
+      document.getElementById("filter-attack-type").value = '';
+      filteredLogs = allLogs;
+      updateTable();
+    }
+
+    function updateTable() {
+      const tbody = document.querySelector("tbody");
+      tbody.innerHTML = "";
+      filteredLogs.forEach(log => tbody.appendChild(log.rowElement));
+    }
+  </script>
+
 </head>
 
 <body>
@@ -230,7 +277,13 @@
       <option value="{{ option }}" {% if option == per_page %}selected{% endif %}>{{ option }}</option>
     {% endfor %}
   </select>
-
+  <div style="margin-bottom: 1rem;">
+    <input type="text" id="filter-ip" placeholder="Фильтр по IP" />
+    <input type="text" id="filter-method" placeholder="Метод (например, GET)" />
+    <input type="text" id="filter-attack-type" placeholder="Тип атаки" />
+    <button onclick="applyFilters()">Фильтровать</button>
+    <button onclick="clearFilters()">Сбросить</button>
+  </div>
   <table>
     <thead>
       <tr>
