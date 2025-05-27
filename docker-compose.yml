@@ -59,32 +59,26 @@ services:
 
     networks:
       - network_fpi
-
-  # certbot:
-  #   image: certbot/certbot
-  #   container_name: certbot
-  #   depends_on:
-  #     frontend:
-  #       condition: service_started
-  #   entrypoint: ["sh", "-c", "sleep 10 && certbot certonly --webroot --webroot-path=/var/www/html --email execute.cpp@gmail.com --agree-tos --no-eff-email -d discorre.ru"]
-  #   volumes:
-  #     - letsencrypt_data:/etc/letsencrypt
-  #     - letsencrypt_logs:/var/log/letsencrypt
-  #     - letsencrypt:/var/www/html
-  #   networks:
-  #     - network_fpi
-  #   command: ["sh", "-c", "crond -f && sleep infinity"]
   
   # mitmproxy:
-  #     build:
-  #       context: ./sniffer
-  #     ports:
-  #       - "8080:8080"  # Пробрасываем порт на хост
-  #     depends_on:
-  #       backend:
-  #         condition: service_healthy
-  #     networks:
-  #       - network_fpi
+  #   build:
+  #     context: ./sniffer
+  #   ports:
+  #     - "8080:8080"   
+  #     - "8081:8081"
+  #     - "8082:8082"  
+  #   volumes:
+  #     - ./certs:/certs 
+  #     - ./attack_logs.json:/app/attack_logs.json
+  #     - ./templates:/app/templates       
+  #     - ./main.py:/app/main.py    
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - network_fpi
+  #   environment:
+  #     - LOG_FILE=/app/attack_logs.json
+
 
 volumes:
   db_data:
