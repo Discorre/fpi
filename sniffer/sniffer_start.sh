@@ -21,6 +21,30 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
+# Проверяем, что ufw установлен
+if ! command -v ufw &>/dev/null; then
+  echo "ufw не установлен. Устанавливаю..."
+  sudo apt update && sudo apt install -y ufw
+fi
+
+# Настраиваем политики  по умолчанию, чтобы установка сниффера не влияла на остальные сервисы на сервере
+sudo ufw default allow incoming
+sudo ufw default allow outgoing
+
+# Разрешаем доступ на порты только из подсети VPN
+sudo ufw allow from 10.8.0.0/24 to any port 8082
+sudo ufw allow from 10.8.0.0/24 to any port 8081
+
+# Запрещаем доступ к этим портам для остальных
+sudo ufw deny 8082
+sudo ufw deny 8081
+
+# Включаем ufw, если он ещё не включён
+if ! sudo ufw status | grep -q "Status: active"; then
+  echo "Включаю ufw..."
+  sudo ufw --force enable
+fi
+
 if [ -f logs/flows.dump ]; then
   mv logs/flows.dump logs/flows_$(date +%Y%m%d_%H%M%S).dump
 fi
