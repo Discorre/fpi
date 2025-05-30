@@ -1,11 +1,10 @@
 import re
-import json
 import os
 import asyncio
 import threading
+import sqlite3
 from datetime import datetime
 import urllib.parse
-from threading import Thread
 from fastapi import FastAPI, Request, WebSocket, Query
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -14,11 +13,11 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from mitmproxy import http
 
-# --- Конфигурация FastAPI ---
+# --- Конфигурация ---
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 CLIENTS = set()
-LOG_FILE = "attack_logs.json"
+DB_FILE = "attack_logs.db"
 
 # --- Схемы атак ---
 ATTACK_PATTERNS = {
@@ -41,8 +40,31 @@ ATTACK_RECOMMENDATIONS = {
     "NOSQLI": "Проверяйте и фильтруйте все параметры, особенно те, что попадают в NoSQL-запросы. Не разрешайте передачу операторов.",
 }
 
-# --- Кэширование в памяти зарегистрированных потоков для предотвращения дублирования ---
 logged_flows = set()
+
+# --- Инициализация базы данных ---
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS attack_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        flow_id TEXT UNIQUE,
+        timestamp TEXT,
+        source_ip TEXT,
+        host TEXT,
+        method TEXT,
+        url TEXT,
+        request_snippet TEXT,
+        response_snippet TEXT,
+        detected_attacks TEXT,
+        recommendations TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
 
 def detect_attack(payload: str) -> list[str]:
     detected = []
@@ -51,18 +73,32 @@ def detect_attack(payload: str) -> list[str]:
             detected.append(attack_type)
     return detected
 
-def append_json_log(entry: dict):
-    logs = []
-    if os.path.exists(LOG_FILE):
-        try:
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-        except json.JSONDecodeError:
-            logs = []
-
-    logs.append(entry)
-    with open(LOG_FILE, "w", encoding="utf-8") as f:
-        json.dump(logs, f, indent=2, ensure_ascii=False)
+def append_sqlite_log(entry: dict):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("""
+        INSERT OR IGNORE INTO attack_logs (
+            flow_id, timestamp, source_ip, host, method, url,
+            request_snippet, response_snippet, detected_attacks, recommendations
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            entry["flow_id"],
+            entry["timestamp"],
+            entry["source_ip"],
+            entry["host"],
+            entry["method"],
+            entry["url"],
+            entry["request_snippet"],
+            entry["response_snippet"],
+            ",".join(entry["detected_attacks"]),
+            " | ".join(entry["recommendations"])
+        ))
+        conn.commit()
+    except Exception as e:
+        print(f"Ошибка записи в БД: {e}")
+    finally:
+        conn.close()
 
 def request(flow: http.HTTPFlow):
     decoded_path = urllib.parse.unquote(flow.request.path)
@@ -108,16 +144,17 @@ def response(flow: http.HTTPFlow):
         "response_snippet": response_content[:300],
         "detected_attacks": attacks,
         "recommendations": [ATTACK_RECOMMENDATIONS[a] for a in attacks if a in ATTACK_RECOMMENDATIONS],
-
     }
-    append_json_log(log_entry)
+    append_sqlite_log(log_entry)
 
-# --- Обработчик сторожевого таймера для изменений файлов ---
+# --- Watchdog и WebSocket ---
+
 loop = asyncio.get_event_loop()
 
 class LogFileHandler(FileSystemEventHandler):
     def on_modified(self, event):
-        if event.src_path.endswith(LOG_FILE):
+        # При изменении файла с логами уведомляем клиентов
+        if event.src_path.endswith(DB_FILE):
             asyncio.run_coroutine_threadsafe(notify_clients(), loop)
 
 async def notify_clients():
@@ -136,24 +173,41 @@ def start_file_watcher():
 
 @app.get("/logs", response_class=HTMLResponse)
 async def read_logs(request: Request, page: int = Query(1, ge=1), per_page: int = Query(10, ge=1, le=100)):
-    logs = []
-    if os.path.exists(LOG_FILE):
-        try:
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-        except Exception:
-            logs = []
+    offset = (page - 1) * per_page
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM attack_logs")
+    total = c.fetchone()[0]
+    c.execute("""
+        SELECT flow_id, timestamp, source_ip, host, method, url,
+               request_snippet, response_snippet, detected_attacks, recommendations
+        FROM attack_logs
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+    """, (per_page, offset))
+    rows = c.fetchall()
+    conn.close()
 
-    total = len(logs)
-    start = (page - 1) * per_page
-    end = start + per_page
-    logs_page = logs[start:end]
+    logs = []
+    for r in rows:
+        logs.append({
+            "flow_id": r[0],
+            "timestamp": r[1],
+            "source_ip": r[2],
+            "host": r[3],
+            "method": r[4],
+            "url": r[5],
+            "request_snippet": r[6],
+            "response_snippet": r[7],
+            "detected_attacks": r[8].split(",") if r[8] else [],
+            "recommendations": r[9].split(" | ") if r[9] else [],
+        })
 
     total_pages = (total + per_page - 1) // per_page
 
     return templates.TemplateResponse("logs.html", {
         "request": request,
-        "logs": logs_page,
+        "logs": logs,
         "page": page,
         "per_page": per_page,
         "total_pages": total_pages,
@@ -177,8 +231,8 @@ def start_api():
         app,
         host="0.0.0.0",
         port=8082,
-        ssl_certfile="./certs/discorre.ru/fullchain.pem",   # Путь к сертификату
-        ssl_keyfile="./certs/discorre.ru/privkey.pem"     # Путь к приватному ключу
+        ssl_certfile="./certs/discorre.ru/fullchain.pem",
+        ssl_keyfile="./certs/discorre.ru/privkey.pem"
     )
 
 # --- Запуск фоновых потоков ---
