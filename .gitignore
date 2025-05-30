@@ -2,4 +2,5 @@ venv
 __pycache__
 node_modules
 package-lock.json
-attack_logs.json
+attack_logs.db
+logs
